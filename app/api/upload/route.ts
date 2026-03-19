@@ -1,6 +1,4 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { writeFile, mkdir } from "fs/promises"
-import { join } from "path"
 
 export async function POST(request: NextRequest) {
   try {
@@ -11,18 +9,31 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 })
     }
 
-    const bytes = await file.arrayBuffer()
-    const buffer = Buffer.from(bytes)
+    const cloudName = process.env.CLOUDINARY_CLOUD_NAME
+    const uploadPreset = process.env.CLOUDINARY_UPLOAD_PRESET
 
-    const uploadDir = join(process.cwd(), "public", "uploads")
-    await mkdir(uploadDir, { recursive: true })
+    if (!cloudName || !uploadPreset) {
+      return NextResponse.json({ error: "Cloudinary not configured" }, { status: 500 })
+    }
 
-    const filename = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`
-    const filepath = join(uploadDir, filename)
-    await writeFile(filepath, buffer)
+    const cloudForm = new FormData()
+    cloudForm.append("file", file)
+    cloudForm.append("upload_preset", uploadPreset)
+    cloudForm.append("folder", "cochirinos/recetas")
 
-    const url = `/uploads/${filename}`
-    return NextResponse.json({ url })
+    const res = await fetch(
+      `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
+      { method: "POST", body: cloudForm }
+    )
+
+    if (!res.ok) {
+      const err = await res.text()
+      console.error("Cloudinary error:", err)
+      return NextResponse.json({ error: "Upload failed" }, { status: 500 })
+    }
+
+    const data = await res.json()
+    return NextResponse.json({ url: data.secure_url })
   } catch (error) {
     console.error("Upload error:", error)
     return NextResponse.json({ error: "Upload failed" }, { status: 500 })
